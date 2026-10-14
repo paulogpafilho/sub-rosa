@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: sub-rosa
+  config:
+    import: optional:file:.env[.properties]
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:}
+  datasource:
+    url: ${IDP_DB_URL}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  sql:
+    init:
+      mode: never
+  session:
+    jdbc:
+      initialize-schema: never
+  flyway:
+    enabled: true
+server:
+  port: ${IDP_PORT:9000}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: true
+idp:
+  issuer: ${IDP_ISSUER}
+logging:
+  structured:
+    format:
+      console: ecs
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never

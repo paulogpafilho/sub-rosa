@@ -1,0 +1,6 @@
+# HTTP is allowed only for local development.
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false

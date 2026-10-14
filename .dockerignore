@@ -1,0 +1,9 @@
+.git
+.local_notes
+.m2
+**/target
+**/.env
+**/.env.*
+**/*.log
+.idea
+.vscode

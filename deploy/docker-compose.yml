@@ -1,0 +1,39 @@
+name: sub-rosa
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${DB_NAME:?Set DB_NAME in .env}
+      POSTGRES_USER: ${DB_USER:?Set DB_USER in .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in .env}
+    command: [postgres, -p, "${DB_PORT:?Set DB_PORT in .env}"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -p ${DB_PORT} -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+  idp:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:?Set SPRING_PROFILES_ACTIVE in .env}
+      IDP_PORT: ${IDP_PORT:?Set IDP_PORT in .env}
+      IDP_ISSUER: ${IDP_ISSUER:?Set IDP_ISSUER in .env}
+      IDP_DB_URL: ${IDP_DB_URL:?Set IDP_DB_URL in .env}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "127.0.0.1:${IDP_PORT}:${IDP_PORT}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      default:
+        aliases:
+          - ${IDP_HOSTNAME:?Set IDP_HOSTNAME in .env}
+volumes:
+  pgdata:
