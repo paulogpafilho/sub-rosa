@@ -17,6 +17,7 @@ spring:
     init:
       mode: never
   session:
+    timeout: ${IDP_SESSION_IDLE_TIMEOUT:30m}
     jdbc:
       initialize-schema: never
   flyway:
@@ -31,6 +32,18 @@ server:
         secure: true
 idp:
   issuer: ${IDP_ISSUER}
+  identity:
+    bcrypt-cost: ${IDP_BCRYPT_COST:12}
+    password-max-bytes: ${IDP_PASSWORD_MAX_BYTES:72}
+    lockout-failures: ${IDP_LOCKOUT_FAILURES:5}
+    lockout-duration: ${IDP_LOCKOUT_DURATION:15m}
+    ip-attempts: ${IDP_IP_ATTEMPTS:20}
+    ip-window: ${IDP_IP_WINDOW:1m}
+    ip-capacity: ${IDP_IP_CAPACITY:10000}
+    session-idle-timeout: ${IDP_SESSION_IDLE_TIMEOUT:30m}
+    session-absolute-timeout: ${IDP_SESSION_ABSOLUTE_TIMEOUT:8h}
+    admin-user: ${IDP_ADMIN_USER:}
+    admin-password: ${IDP_ADMIN_PASSWORD:}
 logging:
   structured:
     format:

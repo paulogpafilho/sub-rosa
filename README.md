@@ -45,9 +45,10 @@ Surefire runs unit tests (`*Test`); Failsafe runs integration tests (`*IT`) duri
 `verify`.  
 Testcontainers tests require Docker.
 
-The foundations integration suite starts PostgreSQL 16 and checks Flyway migration
-validation and reruns, JDBC session persistence and cascading deletion, and HTTP
-health/access rules.
+Integration tests start PostgreSQL 16 and check migrations, concurrent bootstrap
+and account lockout, password handling, CSRF, session rotation, shared JDBC session
+storage, logout, and idle/absolute expiry. Unit tests cover bcrypt byte limits and
+the per-IP sliding window.
 
 ## Local startup
 
@@ -56,7 +57,7 @@ Requires Docker with Compose. From the repository root:
 Powershell:
 ```powershell
 Copy-Item .env-example .env
-# Edit .env and replace DB_PASSWORD with a random password before starting.
+# Edit .env and replace DB_PASSWORD and IDP_ADMIN_PASSWORD with random passwords.
 docker compose --env-file .env -f deploy/docker-compose.yml up --build -d
 curl.exe http://idp.localtest.me:9000/actuator/health
 ```
@@ -64,7 +65,7 @@ curl.exe http://idp.localtest.me:9000/actuator/health
 Bash:
 ```bash
 cp .env-example .env
-# Edit .env and replace DB_PASSWORD with a random password before starting.
+# Edit .env and replace DB_PASSWORD and IDP_ADMIN_PASSWORD with random passwords.
 docker compose --env-file .env -f deploy/docker-compose.yml up --build -d
 curl http://idp.localtest.me:9000/actuator/health
 ```
@@ -87,8 +88,35 @@ waits for database health before starting. Flyway creates the initial session
 schema; Hibernate only validates mappings and Spring Session's own DDL initializer
 is disabled. Later migrations add identity and protocol tables alongside their
 features. `GET /actuator/health` reports `UP` when the database is reachable;
-details are hidden and all other routes are denied until implemented. Console
+details are hidden. Console
 logs use ECS JSON, and no generated default security account is enabled.
+
+Open `http://idp.localtest.me:9000/login` and use the bootstrap credentials from
+your `.env`. The initial account is created only when no users exist; startup
+fails if that database is empty and bootstrap credentials are missing. Concurrent
+first starts serialize bootstrap creation. Later changes to these credentials do
+not reset an existing account. The account has no admin-console role yet; that
+console and the access model are later phases.
+
+Login requires CSRF, rotates the session ID, and redirects to the authenticated
+home page. Sign out there with the CSRF-protected form. Tabs sharing the cookie
+share the JDBC-backed session. Sessions expire after 30 idle minutes or eight
+hours since authentication by default; activity cannot extend the absolute limit.
+Cookies are HttpOnly and SameSite=Lax. Only login and health are public; the home
+page requires authentication and unimplemented routes are denied.
+
+Passwords use salted bcrypt (cost 12 by default), with a maximum of 72 UTF-8
+bytes, configurable downwards. Unknown users still perform a dummy bcrypt check;
+unknown, disabled, locked and incorrect credentials use the same public error.
+Five consecutive failures lock an account for 15 minutes. The next attempt after
+lock expiry starts a fresh counter; successful authentication clears failures.
+Database updates enforce lockout atomically under concurrent attempts.
+
+A bounded, per-instance sliding window also limits all login attempts to 20 per
+socket IP per minute. It ignores forwarding headers; behind a proxy, callers
+share the proxy's limit unless a trusted forwarding setup is explicitly added.
+The throttle resets on restart and is not a cluster-wide limit. Account locks
+and sessions are shared in PostgreSQL. All limits are documented in `.env-example`.
 
 The `dev` profile permits **HTTP for local development only** and disables the
 session cookie's `Secure` flag. Outside `dev`, the issuer must use HTTPS, requests

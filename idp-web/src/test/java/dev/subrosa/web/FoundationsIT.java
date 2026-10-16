@@ -40,6 +40,9 @@ class FoundationsIT {
 		registry.add("DB_USER", POSTGRES::getUsername);
 		registry.add("DB_PASSWORD", POSTGRES::getPassword);
 		registry.add("IDP_ISSUER", () -> "http://idp.localtest.me:9000");
+		registry.add("IDP_ADMIN_USER", () -> "foundation-admin");
+		registry.add("IDP_ADMIN_PASSWORD", () -> "test-foundation-password");
+		registry.add("IDP_BCRYPT_COST", () -> "10");
 	}
 
 	@LocalServerPort
@@ -59,11 +62,11 @@ class FoundationsIT {
 
 	@Test
 	void migrationOwnsSchemaAndIsRepeatableWithoutChanges() {
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("1");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
 		flyway.validate();
 		assertThat(flyway.migrate().migrationsExecuted).isZero();
 		assertThat(jdbc.queryForList("select tablename from pg_tables where schemaname = 'public'", String.class))
-				.contains("flyway_schema_history", "spring_session", "spring_session_attributes");
+				.contains("flyway_schema_history", "spring_session", "spring_session_attributes", "users");
 		assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("validate");
 		assertThat(environment.getProperty("spring.jpa.open-in-view", Boolean.class)).isFalse();
 		assertThat(environment.getProperty("spring.session.jdbc.initialize-schema")).isEqualTo("never");
@@ -100,7 +103,7 @@ class FoundationsIT {
 	}
 
 	@Test
-	void healthIsPublicAndOtherRoutesAreDenied() throws Exception {
+	void healthAndLoginArePublicAndOtherRoutesRequireAuthentication() throws Exception {
 		try (var client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build()) {
 			var health = get(client, "/actuator/health");
 			assertThat(health.statusCode()).isEqualTo(200);
@@ -108,9 +111,10 @@ class FoundationsIT {
 			assertThat(body.get("status").asString()).isEqualTo("UP");
 			assertThat(body.has("components")).isFalse();
 			assertThat(body.has("details")).isFalse();
-			assertThat(get(client, "/actuator/env").statusCode()).isEqualTo(403);
-			assertThat(get(client, "/admin").statusCode()).isEqualTo(403);
-			assertThat(get(client, "/login").statusCode()).isEqualTo(403);
+			assertThat(get(client, "/actuator/env").statusCode()).isEqualTo(302);
+			assertThat(get(client, "/admin").statusCode()).isEqualTo(302);
+			assertThat(get(client, "/").statusCode()).isEqualTo(302);
+			assertThat(get(client, "/login").statusCode()).isEqualTo(200);
 		}
 	}
 
