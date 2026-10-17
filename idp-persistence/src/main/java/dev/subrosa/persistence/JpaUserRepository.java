@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 interface JpaUserRepository extends JpaRepository<UserEntity, UUID> {
+	@Query("select u.enabled from UserEntity u where u.id = :id")
+	Optional<Boolean> findEnabledById(UUID id);
+
 	Optional<UserEntity> findByUsername(String username);
 
 	@Modifying

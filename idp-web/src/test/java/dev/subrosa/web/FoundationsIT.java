@@ -62,7 +62,7 @@ class FoundationsIT {
 
 	@Test
 	void migrationOwnsSchemaAndIsRepeatableWithoutChanges() {
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("2");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
 		flyway.validate();
 		assertThat(flyway.migrate().migrationsExecuted).isZero();
 		assertThat(jdbc.queryForList("select tablename from pg_tables where schemaname = 'public'", String.class))

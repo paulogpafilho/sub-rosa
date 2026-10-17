@@ -96,7 +96,7 @@ your `.env`. The initial account is created only when no users exist; startup
 fails if that database is empty and bootstrap credentials are missing. Concurrent
 first starts serialize bootstrap creation. Later changes to these credentials do
 not reset an existing account. The account has no admin-console role yet; that
-console and the access model are later phases.
+console is a later phase.
 
 Login requires CSRF, rotates the session ID, and redirects to the authenticated
 home page. Sign out there with the CSRF-protected form. Tabs sharing the cookie
@@ -148,4 +148,47 @@ packaging stage skips test execution so it does not require Docker inside Docker
 
 OpenSAML is resolved from the Shibboleth release repository.  
 Other dependencies and plugins use Maven Central.
+
+## Access model
+
+Applications own roles; roles contain validated, flat entitlements such as
+`invoices:approve`. Users receive roles directly or through global groups.
+There are no direct user entitlement grants. The stable subject is the user UUID.
+`AccessResolver.resolve(userId, applicationId)` unions and deduplicates the requested
+application's role names and entitlements. Groups describe all of the user's global
+memberships, including groups without roles for that application. An enabled user
+without grants receives empty roles/entitlements; a missing or disabled user is
+rejected. An unknown application has no grants.
+
+The persistence adapter reads a repeatable-read snapshot in three queries for an
+enabled user, regardless of membership, role or entitlement count. Disabled and
+missing users stop after the status query. Roles without entitlements are retained.
+Applications, groups and roles carry optimistic versions; new snapshots use a null
+version, and edits must retain the version last read. Membership and assignment
+operations are idempotent additions/removals, enforced by composite primary keys.
+Flyway V3 adds the access tables; V1 and V2 remain unchanged.
+
+The development seed is explicit and repeatable. After starting the stack, choose
+an existing enabled user and substitute your `.env` database values below:
+
+```powershell
+Get-Content deploy/seed.sql | docker compose --env-file .env -f deploy/docker-compose.yml exec -T postgres psql -U <DB_USER> -d <DB_NAME> -p <DB_PORT> -v seed_username=<existing-user>
+```
+
+```bash
+docker compose --env-file .env -f deploy/docker-compose.yml exec -T postgres psql -U <DB_USER> -d <DB_NAME> -p <DB_PORT> -v seed_username=<existing-user> < deploy/seed.sql
+```
+
+This grants `Reader` directly and `Approver` through `Finance` for `Invoice Demo`
+(`urn:subrosa:invoice-demo`), producing `invoices:read` and `invoices:approve`.
+It requires an explicit existing enabled username and neither creates users nor
+changes passwords. Rerunning adds missing demo grants without duplicates; it does
+not reset edits to existing aggregate fields. Stable demo IDs are reserved by the
+script; conflicting names/IDs should be resolved before seeding.
+
+PostgreSQL integration tests cover grants, revocations, application isolation,
+disabled users, schema constraints, optimistic versions and repeatable seeding.
+Hibernate statistics assert exactly three access queries for zero, one and many
+roles/groups/entitlements. Domain unit tests cover unions, validation and immutable
+results.
 
