@@ -36,6 +36,7 @@ class FoundationsIT {
 
 	@DynamicPropertySource
 	static void databaseProperties(DynamicPropertyRegistry registry) {
+		registry.add("IDP_KEY_ENCRYPTION_SECRET", () -> "a1".repeat(32));
 		registry.add("IDP_DB_URL", POSTGRES::getJdbcUrl);
 		registry.add("DB_USER", POSTGRES::getUsername);
 		registry.add("DB_PASSWORD", POSTGRES::getPassword);
@@ -62,7 +63,7 @@ class FoundationsIT {
 
 	@Test
 	void migrationOwnsSchemaAndIsRepeatableWithoutChanges() {
-		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("3");
+		assertThat(flyway.info().current().getVersion().getVersion()).isEqualTo("4");
 		flyway.validate();
 		assertThat(flyway.migrate().migrationsExecuted).isZero();
 		assertThat(jdbc.queryForList("select tablename from pg_tables where schemaname = 'public'", String.class))

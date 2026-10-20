@@ -41,6 +41,7 @@ class AccessModelIT {
 	@DynamicPropertySource
 	static void properties(DynamicPropertyRegistry registry) {
 		registry.add("IDP_DB_URL", POSTGRES::getJdbcUrl);
+		registry.add("IDP_KEY_ENCRYPTION_SECRET", () -> "a1".repeat(32));
 		registry.add("DB_USER", POSTGRES::getUsername);
 		registry.add("DB_PASSWORD", POSTGRES::getPassword);
 		registry.add("IDP_ISSUER", () -> "http://idp.localtest.me:9000");

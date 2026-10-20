@@ -57,7 +57,7 @@ Requires Docker with Compose. From the repository root:
 Powershell:
 ```powershell
 Copy-Item .env-example .env
-# Edit .env and replace DB_PASSWORD and IDP_ADMIN_PASSWORD with random passwords.
+# Edit .env: replace both passwords and set IDP_KEY_ENCRYPTION_SECRET (see below).
 docker compose --env-file .env -f deploy/docker-compose.yml up --build -d
 curl.exe http://idp.localtest.me:9000/actuator/health
 ```
@@ -65,7 +65,7 @@ curl.exe http://idp.localtest.me:9000/actuator/health
 Bash:
 ```bash
 cp .env-example .env
-# Edit .env and replace DB_PASSWORD and IDP_ADMIN_PASSWORD with random passwords.
+# Edit .env: replace both passwords and set IDP_KEY_ENCRYPTION_SECRET (see below).
 docker compose --env-file .env -f deploy/docker-compose.yml up --build -d
 curl http://idp.localtest.me:9000/actuator/health
 ```
@@ -102,7 +102,7 @@ Login requires CSRF, rotates the session ID, and redirects to the authenticated
 home page. Sign out there with the CSRF-protected form. Tabs sharing the cookie
 share the JDBC-backed session. Sessions expire after 30 idle minutes or eight
 hours since authentication by default; activity cannot extend the absolute limit.
-Cookies are HttpOnly and SameSite=Lax. Only login and health are public; the home
+Cookies are HttpOnly and SameSite=Lax. Login, health, and JWKS are public; the home
 page requires authentication and unimplemented routes are denied.
 
 Passwords use salted bcrypt (cost 12 by default), with a maximum of 72 UTF-8
@@ -191,4 +191,62 @@ disabled users, schema constraints, optimistic versions and repeatable seeding.
 Hibernate statistics assert exactly three access queries for zero, one and many
 roles/groups/entitlements. Domain unit tests cover unions, validation and immutable
 results.
+
+## Signing keys and JWT primitives
+
+Every startup requires `IDP_KEY_ENCRYPTION_SECRET`: exactly 64 hexadecimal
+characters encoding 32 cryptographically random bytes, used directly as an
+AES-256 key. There is no default or password derivation. Generate one locally,
+then put the output in ignored `.env` (never commit or log it):
+
+```powershell
+$keyBytes = [byte[]]::new(32)
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($keyBytes)
+$rng.Dispose()
+[BitConverter]::ToString($keyBytes).Replace('-', '').ToLowerInvariant()
+```
+
+```bash
+openssl rand -hex 32
+```
+
+Back up this secret securely alongside database backups, separately from the
+database. Losing it makes stored signing keys unrecoverable. Changing it requires
+an explicit decrypt/re-encrypt migration with both secrets; replacing the variable
+alone makes startup fail. Never delete key history to work around a failed decrypt.
+
+The first startup generates an RSA-2048 key and matching self-signed X.509 signing
+certificate. Its `kid` is the lowercase hex SHA-256 thumbprint of the public key's
+DER SubjectPublicKeyInfo. Generation is serialized across instances under a PostgreSQL
+transaction lock. Flyway V4 adds `signing_keys`; V1–V3 remain unchanged. A partial
+unique index enforces at most one ACTIVE key. The PKCS#8 private key is encrypted
+using AES-256-GCM, a fresh 96-bit nonce and 128-bit authentication tag. The stored
+`v1:` envelope contains base64(nonce || ciphertext || tag); authenticated data binds
+the envelope to its key ID and format. Only public PEM and certificate are plaintext.
+Startup checks decryption and matching private/public material before serving traffic.
+
+`GET /oauth2/jwks` publishes only RSA public JWK fields (`kty`, `kid`, `use`, `alg`,
+`n`, `e`). ACTIVE and unexpired RETIRING keys are included. Rotation is an internal
+operation with no HTTP endpoint or scheduler yet: it atomically marks the previous
+key RETIRING and inserts a new active key. Retention must exceed the planned maximum
+ten-minute token lifetime; use 24 hours for manual rotation. At `retire_at`, the old
+key leaves JWKS and signature verification; its encrypted database history remains.
+The domain permits final RETIRED status after that deadline; a cleanup scheduler
+is deferred. RETIRED keys are never published.
+The certificate is valid for ten years; rotate before expiry. Sharing the signing
+key between OIDC and future SAML is a deliberate MVP simplification.
+
+`JwtSignatures` uses Nimbus JOSE+JWT for RS256 signing and signature verification,
+with a required `kid` resolved only against the local published keys. It rejects
+unsigned tokens, other algorithms, unknown keys, tampering and critical headers.
+This is a signature primitive: callers must still validate issuer, audience, times,
+token type and protocol-specific claims. No tokens are issued over HTTP yet;
+authorization/token endpoints, discovery and the admin UI remain deferred.
+
+Tests cover encryption authentication, wrong secrets, concurrent bootstrap,
+database constraints, rollback on failed rotation, old signatures across rotation
+and retirement, public JWKS verification, and malformed/forged JWTs. The adapter
+APIs follow the [Nimbus RSA JWT example](https://connect2id.com/products/nimbus-jose-jwt/examples/jwt-with-rsa-signature)
+and [Bouncy Castle certificate builder](https://downloads.bouncycastle.org/java/docs/bcpkix-jdk18on-javadoc/org/bouncycastle/cert/jcajce/JcaX509v3CertificateBuilder.html).
 

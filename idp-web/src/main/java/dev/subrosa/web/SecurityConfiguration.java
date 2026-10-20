@@ -28,7 +28,7 @@ class SecurityConfiguration {
 		}
 		http.authenticationProvider(new IdentityAuthenticationProvider(authentication, throttle));
 		http.authorizeHttpRequests(requests -> requests.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-				.requestMatchers(HttpMethod.GET, "/actuator/health", "/login").permitAll()
+				.requestMatchers(HttpMethod.GET, "/actuator/health", "/login", "/oauth2/jwks").permitAll()
 				.requestMatchers(HttpMethod.POST, "/login", "/logout").permitAll().requestMatchers(HttpMethod.GET, "/")
 				.authenticated().anyRequest().denyAll());
 		http.formLogin(form -> form.loginPage("/login").failureUrl("/login?error")

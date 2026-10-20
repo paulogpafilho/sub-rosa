@@ -66,6 +66,7 @@ class IdentityIT {
 
 	@DynamicPropertySource
 	static void properties(DynamicPropertyRegistry registry) {
+		registry.add("IDP_KEY_ENCRYPTION_SECRET", () -> "a1".repeat(32));
 		registry.add("IDP_DB_URL", POSTGRES::getJdbcUrl);
 		registry.add("DB_USER", POSTGRES::getUsername);
 		registry.add("DB_PASSWORD", POSTGRES::getPassword);
