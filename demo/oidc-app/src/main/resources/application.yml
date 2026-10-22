@@ -1,0 +1,27 @@
+server:
+  port: ${OIDC_DEMO_PORT:8081}
+  servlet:
+    session:
+      cookie:
+        name: OIDC_DEMO_SESSION
+        http-only: true
+        same-site: lax
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          invoice-demo:
+            client-id: invoice-demo
+            client-authentication-method: none
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            scope: openid,profile,email,groups,roles
+        provider:
+          invoice-demo:
+            issuer-uri: ${IDP_ISSUER:http://idp.localtest.me:9000}
+            authorization-uri: ${IDP_ISSUER:http://idp.localtest.me:9000}/oauth2/authorize
+            token-uri: ${IDP_ISSUER:http://idp.localtest.me:9000}/oauth2/token
+            jwk-set-uri: ${IDP_ISSUER:http://idp.localtest.me:9000}/oauth2/jwks
+            user-info-uri: ${IDP_ISSUER:http://idp.localtest.me:9000}/userinfo
+            user-name-attribute: sub

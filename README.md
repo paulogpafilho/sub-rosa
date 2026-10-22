@@ -28,11 +28,22 @@ Compilation targets Java 21.
 mvn verify
 ```
 
-Formatting and Checkstyle run during `validate`.  
+All Java modules, including tests and demos, use
+[Google Java Style](https://google.github.io/styleguide/javaguide.html).
+Spotless pins google-java-format 1.28.0 with the GOOGLE style; Checkstyle uses its
+bundled `google_checks.xml`. Both run during `validate`, and Checkstyle warnings
+fail the build. `.editorconfig` provides matching two-space Java indentation.
+
 Apply Java formatting with:
 
 ```shell
 mvn spotless:apply
+```
+
+Check formatting and style without compiling or running tests:
+
+```shell
+mvn validate
 ```
 
 Use the root POM, including for individual modules:
@@ -229,8 +240,8 @@ Startup checks decryption and matching private/public material before serving tr
 `GET /oauth2/jwks` publishes only RSA public JWK fields (`kty`, `kid`, `use`, `alg`,
 `n`, `e`). ACTIVE and unexpired RETIRING keys are included. Rotation is an internal
 operation with no HTTP endpoint or scheduler yet: it atomically marks the previous
-key RETIRING and inserts a new active key. Retention must exceed the planned maximum
-ten-minute token lifetime; use 24 hours for manual rotation. At `retire_at`, the old
+key RETIRING and inserts a new active key. Retention must exceed the maximum
+ten-minute token lifetime plus one-minute clock skew; use 24 hours for manual rotation. At `retire_at`, the old
 key leaves JWKS and signature verification; its encrypted database history remains.
 The domain permits final RETIRED status after that deadline; a cleanup scheduler
 is deferred. RETIRED keys are never published.
@@ -241,12 +252,110 @@ key between OIDC and future SAML is a deliberate MVP simplification.
 with a required `kid` resolved only against the local published keys. It rejects
 unsigned tokens, other algorithms, unknown keys, tampering and critical headers.
 This is a signature primitive: callers must still validate issuer, audience, times,
-token type and protocol-specific claims. No tokens are issued over HTTP yet;
-authorization/token endpoints, discovery and the admin UI remain deferred.
+token type and protocol-specific claims. The OAuth endpoints below use these
+primitives; the admin UI remains deferred.
 
 Tests cover encryption authentication, wrong secrets, concurrent bootstrap,
 database constraints, rollback on failed rotation, old signatures across rotation
 and retirement, public JWKS verification, and malformed/forged JWTs. The adapter
 APIs follow the [Nimbus RSA JWT example](https://connect2id.com/products/nimbus-jose-jwt/examples/jwt-with-rsa-signature)
 and [Bouncy Castle certificate builder](https://downloads.bouncycastle.org/java/docs/bcpkix-jdk18on-javadoc/org/bouncycastle/cert/jcajce/JcaX509v3CertificateBuilder.html).
+
+## OAuth 2.0 and OpenID Connect
+
+Authorization code with required S256 PKCE, client credentials and rotating refresh
+tokens are implemented in the framework-free `idp-oidc` module. Spring handles
+HTTP, session login, CSRF and wiring. Discovery is at
+`/.well-known/openid-configuration`; the other endpoints are `/oauth2/authorize`,
+`/oauth2/token`, `/userinfo` and `/oauth2/jwks`. Authorization accepts GET and
+CSRF-protected POST; token accepts form POST; userinfo accepts GET/POST with an
+Authorization bearer header. Unimplemented routes remain denied.
+
+Client authentication is explicitly registered as `none`, `client_secret_basic`
+or `client_secret_post`. Public clients cannot use client credentials. Clients are
+registered against one application, with exact callback strings, allowed grants,
+allowed scopes and bounded lifetimes. Client updates carry an optimistic version.
+Flyway V5 adds clients, codes, refresh families and refresh tokens; V1–V4 are unchanged.
+
+Only explicitly trusted first-party clients are supported in this MVP. Registration
+is the prior arrangement for consent, including offline access; there is no consent
+UI or dynamic registration. Do not register arbitrary third-party applications.
+`prompt=none`, `prompt=login` and `max_age` are supported. Unsupported prompts,
+request objects, request URIs, claims requests and non-query response modes are
+rejected. Unknown clients and missing/unregistered callbacks produce a local error,
+never a redirect. Other errors return the original state to the trusted callback.
+Authorization responses include `iss`. Login resumes only a validated request held
+in the JDBC session; session fixation protection and absolute expiry still apply.
+
+Codes expire after 60 seconds and bind the client, callback, scopes, PKCE, nonce
+and authentication time. Codes and refresh tokens contain 256 random bits and are
+stored only as SHA-256 hashes, as are generated client secrets. Transactional locks
+and conditional updates serialize consumption/rotation with issuance. Code replay
+revokes its refresh family; reuse of a rotated refresh token revokes every descendant.
+Invalid bindings and issuance failures roll back consumption. Refresh descendants
+retain the original absolute expiry and may narrow their scopes.
+
+Access tokens use RS256 and `typ: at+jwt`, application audience, subject, client ID,
+scope, timestamps and unique `jti`. Client-credentials subjects identify the client
+and carry no user access grants. ID tokens use the client audience, `auth_time`
+and original authorization nonce (omitted on refresh). Shared `ClaimsMapper` filters
+profile, email, groups, roles and entitlements by scope; entitlements follow `roles`.
+Userinfo separately checks signature, type, issuer, application audience, expiry,
+issuance time, maximum lifetime, subject, client and the `openid` scope, and rejects
+machine tokens and disabled/missing users. Self-contained access/ID tokens already
+issued remain valid until expiry; replay revocation affects refresh credentials.
+
+Default global ceilings are 60s codes, 10m access/ID tokens and 24h absolute refresh
+tokens; clients may shorten token lifetimes. Configure shorter ceilings using
+`IDP_CODE_TTL`, `IDP_TOKEN_TTL`, `IDP_REFRESH_TTL` (ISO-8601). `IDP_CLOCK_SKEW`
+defaults to 30s and permits 0–60s. Rotation retention must exceed the ten-minute
+token ceiling plus maximum one-minute skew (strictly greater than 11 minutes).
+Token/userinfo responses disable caching. CORS is limited to token, userinfo,
+discovery and JWKS, and only origins derived from registered callback URLs.
+
+### Local demo
+
+Compose now includes `oidc-demo`, an independent Spring Security public client
+that automatically uses PKCE. Start/rebuild with the existing root `.env`:
+
+```shell
+docker compose --env-file .env -f deploy/docker-compose.yml up --build -d
+```
+
+Run the existing access-model seed first (using an existing enabled username),
+then explicitly register the callback. For the default port:
+
+```powershell
+Get-Content deploy/seed-oauth.sql | docker compose --env-file .env -f deploy/docker-compose.yml exec -T postgres psql -U <DB_USER> -d <DB_NAME> -p <DB_PORT> -v seed_redirect_uri=http://localhost:8081/login/oauth2/code/invoice-demo
+```
+
+Use `http://localhost:8081/` to open the demo. After IdP login, the demo verifies
+the ID token and displays claims. Its cookie uses a separate name from the IdP.
+`OIDC_DEMO_PORT` changes the published/application port; register that exact callback
+before using a different port or hostname. A repeated seed never adds another callback
+or replaces an existing secret. These are local HTTP development settings.
+
+To add the optional `invoice-machine` client, generate a secret locally and retain
+the plaintext securely once; pass only its hash to `seed-oauth.sql` as
+`seed_client_secret_hash`:
+
+```shell
+python -c "import secrets,hashlib; s=secrets.token_urlsafe(32); print('CLIENT_SECRET='+s); print('seed_client_secret_hash='+hashlib.sha256(s.encode()).hexdigest())"
+```
+
+Set `CLIENT_ID=invoice-machine`, `CLIENT_SECRET` and `IDP_ISSUER` in your local shell
+and run `sh deploy/client-credentials.sh`. It intentionally prints the token response
+for inspection; do not capture it in shared logs. Secrets cannot be recovered from
+their hashes. Refresh credentials require both the refresh grant and `offline_access`.
+
+Implementation references: [OAuth 2.0](https://www.rfc-editor.org/rfc/rfc6749),
+[PKCE](https://www.rfc-editor.org/rfc/rfc7636),
+[OpenID Connect Core](https://openid.net/specs/openid-connect-core-1_0.html) and
+[OAuth security BCP](https://www.rfc-editor.org/rfc/rfc9700).
+The OpenID conformance suite remains Phase 7 work; this implementation is not certified.
+
+`IDP_BUILD_IMAGE` optionally overrides the Maven build-stage image (default
+`maven:3.9.15-eclipse-temurin-21`). A trusted local build image with cached Maven
+and Google formatter artifacts can be used during an upstream download outage;
+all formatting and Checkstyle checks still run.
 

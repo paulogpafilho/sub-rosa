@@ -1,4 +1,2 @@
-/**
- * Domain and ports.
- */
+/** Domain and ports. */
 package dev.subrosa.domain;

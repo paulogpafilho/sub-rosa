@@ -3,12 +3,17 @@ package dev.subrosa.domain;
 import java.util.Optional;
 import java.util.UUID;
 
+/** Persists groups and manages idempotent user memberships. */
 public interface GroupRepository {
-	Optional<Group> findById(UUID id);
+  /** Looks up a stored aggregate by its stable identifier. */
+  Optional<Group> findById(UUID id);
 
-	Group save(Group group);
+  /** Persists a new group or updates the version most recently read. */
+  Group save(Group group);
 
-	void addMember(UUID groupId, UUID userId);
+  /** Adds membership if it does not already exist. */
+  void addMember(UUID groupId, UUID userId);
 
-	void removeMember(UUID groupId, UUID userId);
+  /** Removes membership if it exists. */
+  void removeMember(UUID groupId, UUID userId);
 }

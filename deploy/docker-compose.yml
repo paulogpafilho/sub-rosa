@@ -19,6 +19,8 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
+      args:
+        BUILD_IMAGE: ${IDP_BUILD_IMAGE:-maven:3.9.15-eclipse-temurin-21}
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:?Set SPRING_PROFILES_ACTIVE in .env}
       IDP_PORT: ${IDP_PORT:?Set IDP_PORT in .env}
@@ -38,6 +40,16 @@ services:
       IDP_IP_CAPACITY: ${IDP_IP_CAPACITY:-10000}
       IDP_SESSION_IDLE_TIMEOUT: ${IDP_SESSION_IDLE_TIMEOUT:-30m}
       IDP_SESSION_ABSOLUTE_TIMEOUT: ${IDP_SESSION_ABSOLUTE_TIMEOUT:-8h}
+      IDP_CODE_TTL: ${IDP_CODE_TTL:-PT60S}
+      IDP_TOKEN_TTL: ${IDP_TOKEN_TTL:-PT10M}
+      IDP_REFRESH_TTL: ${IDP_REFRESH_TTL:-PT24H}
+      IDP_CLOCK_SKEW: ${IDP_CLOCK_SKEW:-PT30S}
+    healthcheck:
+      test: [CMD-SHELL, 'curl --fail --silent --max-time 3 http://127.0.0.1:$${IDP_PORT}/actuator/health >/dev/null']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
     ports:
       - "127.0.0.1:${IDP_PORT}:${IDP_PORT}"
     depends_on:
@@ -47,5 +59,20 @@ services:
       default:
         aliases:
           - ${IDP_HOSTNAME:?Set IDP_HOSTNAME in .env}
+  oidc-demo:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        MODULE: demo/oidc-app
+        BUILD_IMAGE: ${IDP_BUILD_IMAGE:-maven:3.9.15-eclipse-temurin-21}
+    environment:
+      IDP_ISSUER: ${IDP_ISSUER}
+      OIDC_DEMO_PORT: ${OIDC_DEMO_PORT:-8081}
+    ports:
+      - "127.0.0.1:${OIDC_DEMO_PORT:-8081}:${OIDC_DEMO_PORT:-8081}"
+    depends_on:
+      idp:
+        condition: service_healthy
 volumes:
   pgdata:

@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="utf-8"><title>Sub-Rosa OIDC demo</title></head>
+<body>
+<h1>Sub-Rosa OIDC demo</h1>
+<p>Claims received through authorization code with S256 PKCE:</p>
+<table><thead><tr><th>Claim</th><th>Value</th></tr></thead>
+<tbody><tr th:each="claim : ${claims}"><td th:text="${claim.key}"></td><td th:text="${claim.value}"></td></tr></tbody></table>
+<form th:action="@{/logout}" method="post"><button type="submit">Log out of demo</button></form>
+</body></html>

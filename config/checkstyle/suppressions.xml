@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<!DOCTYPE suppressions PUBLIC
+    "-//Checkstyle//DTD SuppressionFilter Configuration 1.2//EN"
+    "https://checkstyle.org/dtds/suppressions_1_2.dtd">
+<suppressions>
+  <!-- Preserve the OAuth protocol spelling and Maven's conventional IT test suffix.
+       Match names in the diagnostic, not whole files, so other names remain checked. -->
+  <suppress checks="AbbreviationAsWordInName"
+            message="Abbreviation in name '([A-Za-z0-9]*OAuth[A-Za-z0-9]*|[A-Za-z0-9]+IT)' .*"/>
+</suppressions>

@@ -1,4 +1,2 @@
-/**
- * Persistence adapter.
- */
+/** Persistence adapter. */
 package dev.subrosa.persistence;

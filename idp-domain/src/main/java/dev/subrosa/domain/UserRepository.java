@@ -5,22 +5,23 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
+/** Loads identity snapshots and applies atomic authentication transitions. */
 public interface UserRepository {
-	Optional<User> findByUsername(String username);
+  /** Looks up a stored aggregate by its stable identifier. */
+  Optional<User> findById(UUID id);
 
-	boolean hasUsers();
+  /** Looks up an identity using its login name. */
+  Optional<User> findByUsername(String username);
 
-	/**
-	 * Serialized with other bootstrap operations; inserts only into an empty user
-	 * table.
-	 */
-	boolean createFirst(User user);
+  /** Reports whether bootstrap must preserve existing identities. */
+  boolean hasUsers();
 
-	/** Atomic failure increment, resetting an expired lock's counter. */
-	boolean recordFailure(UUID id, Instant now, int threshold, Duration lockDuration);
+  /** Serialized with other bootstrap operations; inserts only into an empty user table. */
+  boolean createFirst(User user);
 
-	/**
-	 * Succeeds only if enabled, unlocked and unchanged since password verification.
-	 */
-	boolean recordSuccess(User verified, Instant now);
+  /** Atomic failure increment, resetting an expired lock's counter. */
+  boolean recordFailure(UUID id, Instant now, int threshold, Duration lockDuration);
+
+  /** Succeeds only if enabled, unlocked and unchanged since password verification. */
+  boolean recordSuccess(User verified, Instant now);
 }

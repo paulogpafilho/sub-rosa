@@ -1,4 +1,2 @@
-/**
- * SAML 2.0 protocol.
- */
+/** SAML 2.0 protocol. */
 package dev.subrosa.saml;
